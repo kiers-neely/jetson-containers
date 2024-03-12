@@ -7,6 +7,7 @@ import threading
 import multiprocessing as mp
 
 from local_llm import Plugin
+from local_llm.utils import LogFormatter
 
 
 class ProcessProxy(Plugin):
@@ -21,6 +22,8 @@ class ProcessProxy(Plugin):
         """
         self.data_parent, self.data_child = mp.Pipe(duplex=True)
         self.control_parent, self.control_child = mp.Pipe(duplex=True)
+        
+        mp.set_start_method('spawn')
         
         self.subprocess = mp.Process(target=self.run_process, args=(plugin_factory, kwargs))
         self.subprocess.start()
@@ -52,11 +55,42 @@ class ProcessProxy(Plugin):
             self.output(output, channel)
 
     def run_process(self, factory, kwargs):
+        log_level = kwargs.get('log_level', 'info')
+        
+        if kwargs.get('debug') or kwargs.get('verbose'):
+            log_level = "debug"
+            
+        LogFormatter.config(level=log_level)
+            
         logging.debug(f"subprocess {os.getpid()} started")
         
+        from cuda.cudart import (
+            cudaSetDevice,
+            cudaInitDevice,
+            cudaGetLastError,
+            cudaGetErrorString,
+            cudaError_t
+        )
+
+        #error = cudaInitDevice(0,0,0)[0]
+        
+        #if error != cudaError_t.cudaSuccess:
+        #    raise RuntimeError(f"cudaInitDevice() error {error} -- {cudaGetErrorString(error)[1]}")
+        
+        error = cudaSetDevice(0)[0]
+        
+        if error != cudaError_t.cudaSuccess:
+            raise RuntimeError(f"cudaSetDevice() error {error} -- {cudaGetErrorString(error)[1]}")
+            
         try:
-            # create an instance of the plugin
-            plugin = factory(**kwargs)
+            #plugin = factory(**kwargs)  # create an instance of the plugin
+            
+            if factory == 'ChatQuery':
+                from local_llm.plugins import ChatQuery
+                plugin = ChatQuery(**kwargs)
+            else:
+                raise TypeError(f"unsupported proxy class type {factory}")
+                
         except Exception as error:
             self.control_child.send({'status': str(type(error))})
             raise error

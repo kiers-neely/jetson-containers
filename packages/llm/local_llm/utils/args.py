@@ -25,23 +25,26 @@ class ArgParser(argparse.ArgumentParser):
             self.add_argument("--model", type=str, default=None, #required=True, 
                 help="path to the model, or repository on HuggingFace Hub")
             self.add_argument("--quant", type=str, default=None, 
-                help="path to the quantized weights (AWQ uses this)")
+                help="for MLC, the type of quantization to apply (default q4f16_ft)  For AWQ, the path to the quantized weights.")
             self.add_argument("--api", type=str, default=None, choices=['auto_gptq', 'awq', 'hf', 'mlc'], 
                 help="specify the API to use (otherwise inferred)")
             self.add_argument("--vision-model", type=str, default=None, 
-                help="for VLMs, manually select the CLIP vision model to use (e.g. openai/clip-vit-large-patch14-336 for higher-res)")
-
+                help="for VLMs, manually select the vision embedding model to use (e.g. openai/clip-vit-large-patch14-336 for higher-res)")
+            self.add_argument("--vision-scaling", type=str, default=None, choices=['crop', 'resize'],
+                help="for VLMs, select the input image scaling method (default is: crop)")
+     
         if 'chat' in extras or 'prompt' in extras:
-            self.add_argument("--prompt", action='append', nargs='*', 
-                help="add a prompt (can be prompt text or path to .txt, .json, or image file)")
+            self.add_argument("--prompt", action='append', nargs='*', help="add a prompt (can be prompt text or path to .txt, .json, or image file)")
             self.add_argument("--save-mermaid", type=str, default=None, help="save mermaid diagram of the pipeline to this file")
             
         if 'chat' in extras:
-            self.add_argument("--system-prompt", type=str, default=None, help="override the system prompt instruction")
-            self.add_argument("--chat-template", type=str, default=None, #choices=list(ChatTemplates.keys()), 
-                help="manually select the chat template ('llama-2', 'llava-v1', 'vicuna-v1')")
-
+            from local_llm import ChatTemplates
+            self.add_argument("--chat-template", type=str, default=None, choices=list(ChatTemplates.keys()), help="manually select the chat template")
+            self.add_argument("--system-prompt", type=str, default=None, help="override the default system prompt instruction")
+            
         if 'generation' in extras:
+            self.add_argument("--max-context-len", type=int, default=None,
+                help="override the model's default context window length (in tokens)  This should include space for model output (up to --max-new-tokens)  Lowering it from the default (e.g. 4096 for Llama) will reduce memory usage.  By default, it's inherited from the model's max length.") 
             self.add_argument("--max-new-tokens", type=int, default=128, 
                 help="the maximum number of new tokens to generate, in addition to the prompt")
             self.add_argument("--min-new-tokens", type=int, default=-1,
@@ -110,6 +113,12 @@ class ArgParser(argparse.ArgumentParser):
             self.add_argument("--profanity-filter", action='store_true', help="enable profanity filtering in ASR transcripts")
             self.add_argument("--inverse-text-normalization", action='store_true', help="apply Inverse Text Normalization to convert numbers to digits/ect")
             self.add_argument("--no-automatic-punctuation", dest='automatic_punctuation', action='store_false', help="disable punctuation in the ASR transcripts")
+            
+        # NANODB
+        if 'nanodb' in extras:
+            self.add_argument('--nanodb', type=str, default=None, help="path to load or create the database")
+            self.add_argument('--nanodb-model', type=str, default='ViT-L/14@336px', help="the embedding model to use for the database")
+            self.add_argument('--nanodb-reserve', type=int, default=1024, help="the memory to reserve for the database in MB")
             
         # WEBSERVER
         if 'web' in extras:
